@@ -1,0 +1,21 @@
+{% extends "storage/base.html" %}
+
+{% block title %}Welcome - {{ block.super }}{% endblock %}
+
+{% block content %}
+    <h1>Confidential Cloud Storage</h1>
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            {{ form.username.label_tag }}
+            {{ form.username }}
+            {% if form.username.errors %}
+                <div style="color: red;">{{ form.username.errors }}</div>
+            {% endif %}
+        </div>
+        <div class="button-group">
+            <button type="submit" name="upload_action">Upload File</button>
+            <button type="submit" name="download_action">Download Files</button>
+        </div>
+    </form>
+{% endblock %}

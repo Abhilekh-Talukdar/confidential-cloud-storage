@@ -1,0 +1,77 @@
+{% extends "storage/base.html" %}
+
+{% block title %}Download Files - {{ block.super }}{% endblock %}
+
+{% block content %}
+    <h2>Download Files</h2>
+    <p>Files for: <strong>{{ username }}</strong></p>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+            {% endfor %}
+        </ul>
+        <style>
+            /* Basic styling for messages */
+            ul.messages { list-style: none; padding: 0; margin-bottom: 15px; }
+            li.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 10px; margin-bottom: 5px; border-radius: 4px; }
+            li.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 10px; margin-bottom: 5px; border-radius: 4px; }
+        </style>
+    {% endif %}
+
+    {% if download_error %}
+        <div class="error-message">{{ download_error }}</div>
+    {% endif %}
+
+    {% if files %}
+        <ul class="file-list">
+            {% for file in files %}
+            <li>
+                <div class="file-info">
+                    <strong>{{ file.original_filename }}</strong><br>
+                    <small>Uploaded: {{ file.upload_date|date:"Y-m-d H:i" }}</small>
+                </div>
+                <div class="file-actions">
+                    {# Download Form #}
+                    <form action="{% url 'storage:download_file' %}" method="post" style="display: inline-block; margin-right: 10px;">
+                        {% csrf_token %}
+                        <input type="hidden" name="file_id" value="{{ file.id }}">
+                        <div class="form-group" style="display: inline-block; margin-right: 5px; margin-bottom: 0;">
+                            <input type="password" name="file_key" placeholder="Enter File Key (p)" required style="padding: 8px;">
+                        </div>
+                        <button type="submit">Download</button>
+                    </form>
+
+                    {# Delete Form #}
+                    <form action="{% url 'storage:delete_file' file.id %}" method="post" style="display: inline-block;" onsubmit="return confirm('Are you sure you want to delete {{ file.original_filename }}? This cannot be undone.');">
+                        {% csrf_token %}
+                        <button type="submit" class="delete-button" title="Delete File">🗑️</button> {# Use an emoji or icon #}
+                    </form>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {# Add some specific styling for the delete button #}
+        <style>
+            .delete-button {
+                background-color: #dc3545; /* Red color */
+                color: white;
+                padding: 8px 12px; /* Adjust padding */
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px; /* Adjust font size */
+                line-height: 1; /* Ensure icon aligns well */
+            }
+            .delete-button:hover {
+                background-color: #c82333; /* Darker red on hover */
+            }
+            .file-actions { display: flex; align-items: center; } /* Align buttons nicely */
+        </style>
+    {% else %}
+        <p>You haven't uploaded any files yet.</p>
+    {% endif %}
+
+    <a href="{% url 'storage:index' %}" class="button-link back-button">Back to Start</a>
+{% endblock %}

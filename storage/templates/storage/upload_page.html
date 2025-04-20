@@ -1,0 +1,41 @@
+{% extends "storage/base.html" %}
+
+{% block title %}Upload File - {{ block.super }}{% endblock %}
+
+{% block content %}
+    <h2>Upload File</h2>
+    <p>Uploading as: <strong>{{ username }}</strong></p>
+
+    {% if file_key_p %}
+        <div class="key-display">
+            <p><strong>File Uploaded Successfully!</strong></p>
+            <p>Your File Key (p): <strong>{{ file_key_p }}</strong></p>
+            <p><strong>Important:</strong> Keep this key safe. You will need it to download the file.</p>
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+         {% csrf_token %}
+         <div class="form-group">
+             {{ form.filename.label_tag }}
+             {{ form.filename }}
+             {% if form.filename.errors %}
+                 <div style="color: red;">{{ form.filename.errors }}</div>
+             {% endif %}
+         </div>
+         <div class="form-group">
+             {{ form.file.label_tag }}
+             {{ form.file }}
+              {% if form.file.errors %}
+                 <div style="color: red;">{{ form.file.errors }}</div>
+             {% endif %}
+         </div>
+        {% if form.non_field_errors %}
+            <div style="color: red;">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <button type="submit">Upload and Save</button>
+    </form>
+
+    <a href="{% url 'storage:index' %}" class="button-link back-button">Back to Start</a>
+{% endblock %}
