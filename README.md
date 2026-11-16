@@ -85,6 +85,32 @@ graph TD
 ```
 
 
+## Django Security Configuration
+
+The application reads its signing key and deployment settings from environment variables. It refuses to start when `DJANGO_SECRET_KEY` is missing and defaults to production mode (`DJANGO_DEBUG=false`).
+
+Generate a fresh signing key:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+For local development, set the generated key and enable debug mode:
+
+```bash
+export DJANGO_SECRET_KEY="<generated-key>"
+export DJANGO_DEBUG=true
+export DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,testserver
+python manage.py migrate
+python manage.py runserver
+```
+
+For production, provide a unique `DJANGO_SECRET_KEY` through the deployment platform's secret manager, keep `DJANGO_DEBUG=false`, and set `DJANGO_ALLOWED_HOSTS` to the exact hostnames served by the application. Session and CSRF cookies are marked secure whenever debug mode is disabled. Never commit real secret values.
+
+**Key rotation:** The signing key previously committed in `core/settings.py` must be considered compromised. Generate and deploy a new key; existing Django sessions signed with the old key will be invalidated.
+
+> **Security limitation:** File ownership currently relies on a username stored in the session, not authenticated Django users. This settings change does not make that ownership model suitable for production or multi-user confidential data.
+
 ## Core Logic
 
 1.  **Upload:**
