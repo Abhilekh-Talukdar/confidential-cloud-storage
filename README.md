@@ -1,6 +1,6 @@
 # Confidential Cloud Storage
 
-A simple Django web application for securely uploading, storing, and downloading text files (`.txt`). The application uses Rabin's cryptosystem for encryption and splits the encrypted files into three parts for storage.
+A simple Django web application for securely uploading, storing, and downloading text files (`.txt`). The application uses Rabin's cryptosystem and splits encrypted files into three parts for storage.
 
 ## Features
 
@@ -9,13 +9,13 @@ A simple Django web application for securely uploading, storing, and downloading
 * **Encryption:** Files are encrypted using Rabin's cryptosystem upon upload.
     * Two keys (primes `p` and `q`) are generated.
     * Key `p` is shown to the user as the "File Key" required for download.
-    * Key `q` is stored securely in the database alongside file metadata.
+    * Key `q` is stored in the database alongside file metadata.
 * **File Splitting:** Encrypted files are split into three parts before storage.
 * **Storage:** File parts are stored locally on the server's filesystem within the `media/chunks/` directory.
-* **Secure Download:** Users can view their uploaded files and download a specific file by providing the correct "File Key" (`p`). The application retrieves the parts, combines them, decrypts using the provided key `p` and the stored key `q`, and serves the original `.txt` file.
-* **File Deletion:** Users can delete their uploaded files, which removes the database record and the stored file parts.
+* **Download:** Users can provide the correct "File Key" (`p`) to decrypt their files.
+* **File Deletion:** Users can delete their uploaded files and associated chunks.
 
-## Technology Stack and Architectire Overview
+## Technology Stack and Architecture Overview
 
 * **Backend:** Python, Django
 * **Encryption:** Custom implementation of Rabin's Cryptosystem (requires primes `p, q ≡ 3 mod 4`)
@@ -24,82 +24,83 @@ A simple Django web application for securely uploading, storing, and downloading
 * **Database:** SQLite (default, configurable in `settings.py`)
 * **Frontend:** HTML, CSS (basic styling)
 
+## Configuration
+
+Django's signing key and deployment settings are supplied through environment variables. The application refuses to start if `DJANGO_SECRET_KEY` is missing; it no longer falls back to a source-controlled key.
+
+Generate a fresh key for each environment:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+For local development, export the generated key and enable debug mode:
+
+```bash
+export DJANGO_SECRET_KEY="<generated-key>"
+export DJANGO_DEBUG=true
+export DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,testserver
+python manage.py migrate
+python manage.py runserver
+```
+
+For production, set `DJANGO_SECRET_KEY` through the deployment platform's secret manager, set `DJANGO_DEBUG=false`, and set `DJANGO_ALLOWED_HOSTS` to the exact hostnames served by the application. When debug mode is disabled (the default), session and CSRF cookies are marked secure. Do not commit real secret values to the repository.
+
+**Key rotation:** The signing key previously committed in `core/settings.py` must be treated as compromised. Generate and deploy a new key. Rotating it invalidates existing Django sessions, so users may need to sign in again.
+
+> **Security note:** This project currently identifies file owners using a username stored in the session rather than authenticated Django users. The environment configuration above does not make that username-based ownership model suitable for production or multi-user confidential data.
+
 ```mermaid
 
 graph TD
-    %% Entities
     User(User)
     Browser(User's Browser)
     DjangoApp(Django Web Application)
     DB[(Database)]
-    S3[<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Amazon_Web_Services_Logo.svg/32px-Amazon_Web_Services_Logo.svg.png' width='20' /> AWS S3 Bucket]
-    GCS[<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Google_Cloud_logo.svg/32px-Google_Cloud_logo.svg.png' width='20' /> GCP Cloud Storage Bucket]
-    Azure[<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Microsoft_Azure_Logo.svg/32px-Microsoft_Azure_Logo.svg.png' width='20' /> Azure Blob Storage]
+    S3[AWS S3 Bucket]
+    GCS[GCP Cloud Storage Bucket]
+    Azure[Azure Blob Storage]
 
     subgraph User Interaction
         User -- Enters Username/Chooses Action --> Browser
         Browser -- Displays UI --> User
-        Browser -- Submits Upload Request (.txt file) --> DjangoApp
-        Browser -- Submits Download Request (File ID, Key p) --> DjangoApp
-        DjangoApp -- Serves Decrypted .txt File --> Browser
-        Browser -- Presents Download --> User
-        DjangoApp -- Displays File List/Key p/Errors --> Browser
+        Browser -- Submits Upload Request --> DjangoApp
+        Browser -- Submits Download Request --> DjangoApp
+        DjangoApp -- Serves Decrypted File --> Browser
     end
 
     subgraph Upload Process
-        DjangoApp -- Receives Upload --> EncryptSplit(Encrypt File & Split Parts)
-        EncryptSplit -- Generates Keys --> DjangoApp
-        EncryptSplit -- Encrypted Part 1 --> StoreS3(Store Part 1 in S3)
-        EncryptSplit -- Encrypted Part 2 --> StoreGCS(Store Part 2 in GCS)
-        EncryptSplit -- Encrypted Part 3 --> StoreAzure(Store Part 3 in Azure)
-        StoreS3 -- S3 URL/ID --> SaveMeta(Save Metadata to DB)
-        StoreGCS -- GCS URL/ID --> SaveMeta
-        StoreAzure -- Azure URL/ID --> SaveMeta
-        DjangoApp -- Key q, Filenames, User, Part URLs/IDs --> SaveMeta
-        SaveMeta -- Write Record --> DB
-        DjangoApp -- Sends Key p to User --> Browser
+        DjangoApp -- Receives Upload --> EncryptSplit(Encrypt & Split File)
+        EncryptSplit -- Encrypted Part 1 --> StoreS3(Store Part 1)
+        EncryptSplit -- Encrypted Part 2 --> StoreGCS(Store Part 2)
+        EncryptSplit -- Encrypted Part 3 --> StoreAzure(Store Part 3)
+        StoreS3 --> SaveMeta(Save Metadata)
+        StoreGCS --> SaveMeta
+        StoreAzure --> SaveMeta
+        SaveMeta --> DB
     end
 
     subgraph Download Process
-        DjangoApp -- Receives Download Request --> GetMeta(Get Metadata from DB)
-        GetMeta -- File ID, Username --> DB
-        DB -- Record (Key q, Part URLs/IDs) --> GetMeta
-        GetMeta -- Part URLs/IDs --> RetrieveParts(Retrieve Encrypted Parts)
-        RetrieveParts -- Request Part 1 --> S3
-        RetrieveParts -- Request Part 2 --> GCS
-        RetrieveParts -- Request Part 3 --> Azure
-        S3 -- Encrypted Part 1 Data --> RetrieveParts
-        GCS -- Encrypted Part 2 Data --> RetrieveParts
-        Azure -- Encrypted Part 3 Data --> RetrieveParts
-        RetrieveParts -- All Encrypted Parts --> CombineDecrypt(Combine Parts & Decrypt File)
-        GetMeta -- Key q --> CombineDecrypt
-        DjangoApp -- User Key p --> CombineDecrypt
-        CombineDecrypt -- Decrypted File Data --> DjangoApp
+        DjangoApp --> GetMeta(Get Metadata)
+        GetMeta --> DB
+        GetMeta --> RetrieveParts(Retrieve Encrypted Parts)
+        RetrieveParts --> S3
+        RetrieveParts --> GCS
+        RetrieveParts --> Azure
+        RetrieveParts --> CombineDecrypt(Combine & Decrypt)
+        CombineDecrypt --> DjangoApp
     end
-
-    %% Style External Storage
-    style S3 fill:#f9f9f9,stroke:#232F3E,stroke-width:2px
-    style GCS fill:#f9f9f9,stroke:#4285F4,stroke-width:2px
-    style Azure fill:#f9f9f9,stroke:#0078D4,stroke-width:2px
-
 ```
-
 
 ## Core Logic
 
-1.  **Upload:**
-    * User provides username and selects a `.txt` file.
-    * Server generates two large prime numbers `p` and `q` (both congruent to 3 mod 4).
-    * The file content is encrypted character by character using Rabin's algorithm ($c = m^2 \mod n$, where $n=pq$).
-    * The encrypted file is saved.
-    * The encrypted file is split into 3 parts.
-    * Metadata (username, original filename, encrypted filename, key `q`, part locations) is saved to the database.
-    * Key `p` is displayed to the user.
-2.  **Download:**
-    * User provides username and selects a file to download.
-    * User enters their File Key (`p`).
-    * Server retrieves file metadata and stored key `q` from the database using the file ID and username.
-    * Server retrieves the 3 file parts from their stored locations.
-    * The parts are combined into the complete encrypted file.
-    * The encrypted file is decrypted using the user's key `p` and the stored key `q` via the Chinese Remainder Theorem and Rabin's square root properties.
-    * The original `.txt` file is served to the user.
+1. **Upload:**
+   * User provides a username and selects a `.txt` file.
+   * Server generates two prime numbers `p` and `q`, both congruent to 3 mod 4.
+   * File content is encrypted character by character using Rabin's algorithm (`c = m² mod n`, where `n = pq`).
+   * The encrypted file is split into three parts.
+   * Metadata, including key `q` and part locations, is saved to the database.
+   * Key `p` is displayed to the user.
+2. **Download:**
+   * User selects a file and supplies its File Key (`p`).
+   * The server retrieves metadata and key `q`, combines the stored parts, decrypts the file, and serves the original `.txt` file.
