@@ -1,20 +1,67 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+def _environment_flag(name, default=False):
+    """Read a strict boolean environment variable."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-@in)o8+#%8#-sj2x5@_0t(=ansrib3p!!lkk)6h0a$nyj$aqig'
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+    raise ImproperlyConfigured(
+        f"{name} must be one of: true, false, 1, 0, yes, no, on, or off."
+    )
 
-ALLOWED_HOSTS = []
+
+def _environment_list(name, default):
+    """Read a comma-separated environment variable as a non-empty list."""
+    value = os.environ.get(name)
+    if value is None:
+        return list(default)
+
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    if not items:
+        raise ImproperlyConfigured(f"{name} must contain at least one value.")
+    return items
+
+
+def _required_secret_key():
+    """Require a deployment-provided Django signing key."""
+    secret_key = os.environ.get("DJANGO_SECRET_KEY", "").strip()
+    if not secret_key:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set. Generate a unique secret and "
+            "provide it through the environment or deployment secret manager."
+        )
+    return secret_key
+
+
+# Never keep a reusable signing key in source control. The previously committed
+# key must be considered compromised and replaced in every deployed environment.
+SECRET_KEY = _required_secret_key()
+
+# Fail closed: production mode is the default.
+DEBUG = _environment_flag("DJANGO_DEBUG", default=False)
+ALLOWED_HOSTS = _environment_list(
+    "DJANGO_ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1", "testserver"],
+)
+
+# Do not send session or CSRF cookies over plain HTTP outside development.
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
